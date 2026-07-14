@@ -204,6 +204,7 @@ button.ghost:hover{background:var(--teal);color:#fff}
       <div><kbd>Space</kbd> &nbsp;ask Solomon to speak now</div>
       <div><kbd>Esc</kbd> &nbsp;dismiss what he said</div>
       <div><kbd>M</kbd> &nbsp;mute and unmute his listening</div>
+      <div><kbd>&uarr;</kbd> <kbd>&darr;</kbd> &nbsp;noise filter, if the room is loud or quiet</div>
     </div>
   </div>
 </div>
@@ -298,6 +299,13 @@ let pausesSinceRemark=0, lastRemarkAt=0;
 let priorRemarks=[];
 const COOLDOWN_MS=45000;
 
+/* --- turn-taking tuning. Adjustable live with the up and down arrows. --- */
+let speakFloor=12;             /* volume below this counts as "the room is quiet" */
+let roomLevel=0, lastLoudAt=0; /* live readings from the microphone */
+const PAUSE_MS=1200;           /* how long the room stays quiet before he speaks */
+const MIN_WORDS=6;             /* ignore stray coughs and one-word noise */
+const CONFIDENCE_FLOOR=0.5;    /* drop transcription the engine is unsure about */
+
 const $=id=>document.getElementById(id);
 
 /* ========================= setup ========================= */
@@ -330,8 +338,14 @@ function initSpeech(){
     if(isThinking||speaking||muted) return;
     let interim='', final='';
     for(let i=e.resultIndex;i<e.results.length;i++){
-      const t=e.results[i][0].transcript;
-      if(e.results[i].isFinal) final+=t+' '; else interim+=t;
+      const r=e.results[i][0];
+      if(e.results[i].isFinal){
+        /* Drop low-confidence scraps. Background noise transcribes as garbage
+           with a low score, and we do not want to feed that to Solomon. */
+        if(r.confidence===undefined || r.confidence>=CONFIDENCE_FLOOR) final+=r.transcript+' ';
+      } else {
+        interim+=r.transcript;
+      }
     }
     if(final){ currentTranscript+=final; sessionTranscript+=final; }
     const shown=(currentTranscript+interim).trim();
@@ -339,8 +353,8 @@ function initSpeech(){
       $('ticker').textContent='"'+shown.slice(-150)+'"';
       $('ticker').style.opacity='1';
     }
-    clearTimeout(pauseTimer);
-    if(shown.split(/\s+/).length>=6) pauseTimer=setTimeout(onPause,1300);
+    /* Turn-taking is now decided by room volume, not by these events,
+       so a noisy room can no longer mask the pause. See watchRoom(). */
   };
 
   recognition.onerror=e=>{
@@ -363,6 +377,7 @@ function initAudio(){
       analyser.fftSize=32;
       audioCtx.createMediaStreamSource(stream).connect(analyser);
       tide();
+      watchRoom();
       try{recognition.start()}catch(e){}
     })
     .catch(()=>{
@@ -379,7 +394,10 @@ function tide(){
     requestAnimationFrame(frame);
     analyser.getByteFrequencyData(data);
     let sum=0; for(let i=0;i<data.length;i++) sum+=data[i];
-    const target=Math.min(sum/data.length/70,1);
+    const raw=sum/data.length;          /* 0..255-ish, the room's loudness */
+    roomLevel=raw;
+    if(raw>speakFloor) lastLoudAt=Date.now();
+    const target=Math.min(raw/70,1);
     level+=(target-level)*0.12;
     const t=Date.now()/900;
     let d='M0,';
@@ -392,6 +410,18 @@ function tide(){
     top.setAttribute('d',d);
     band.setAttribute('d',d+' L1000,200 L0,200 Z');
   })();
+}
+
+/* ========================= turn-taking by ear ========================= */
+/* Fire when the room has actually fallen quiet, judged by microphone volume,
+   not by the speech engine. This is what makes a noisy room stop mattering. */
+function watchRoom(){
+  setInterval(()=>{
+    if(isThinking||speaking||muted) return;
+    const quietFor=Date.now()-lastLoudAt;
+    const words=currentTranscript.trim().split(/\s+/).filter(Boolean).length;
+    if(quietFor>=PAUSE_MS && words>=MIN_WORDS) onPause();
+  },200);
 }
 
 /* ========================= deciding to speak ========================= */
@@ -702,7 +732,30 @@ document.addEventListener('keydown',e=>{
       try{ recognition.start(); }catch(e){}
     }
   }
+  /* Tune how sensitive his ear is, live, in the actual room.
+     Up = he waits for more quiet (good for a noisy room).
+     Down = he jumps in on smaller gaps (good for a hushed room). */
+  if(e.code==='ArrowUp'){   e.preventDefault(); speakFloor=Math.min(speakFloor+2,60); showDial(); }
+  if(e.code==='ArrowDown'){ e.preventDefault(); speakFloor=Math.max(speakFloor-2,2);  showDial(); }
 });
+
+let dialTimer=null;
+function showDial(){
+  let d=$('dial');
+  if(!d){
+    d=document.createElement('div');
+    d.id='dial';
+    d.style.cssText='position:fixed;bottom:26px;left:50%;transform:translateX(-50%);'+
+      'font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;'+
+      'color:#4A6068;background:#FAFBFA;border:1px solid rgba(17,38,44,.14);border-radius:2px;padding:9px 16px;z-index:70;';
+    document.body.appendChild(d);
+  }
+  const bars='|'.repeat(Math.round(speakFloor/2));
+  d.textContent='Noise filter  '+bars+'  ('+speakFloor+')';
+  d.style.opacity='1';
+  clearTimeout(dialTimer);
+  dialTimer=setTimeout(()=>{ d.style.opacity='0'; d.style.transition='opacity .5s'; },2200);
+}
 window.addEventListener('resize',()=>{ if(speaking) fit(); });
 if(window.speechSynthesis) window.speechSynthesis.getVoices();
 </script>
