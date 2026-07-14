@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solomon — Guest of the Discussion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Spectral:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sea:#DFE7E4;        /* room background, pale sea glass */
+  --sea-deep:#C4D2CE;
+  --ink:#11262C;        /* text */
+  --ink-soft:#4A6068;
+  --panel:#FAFBFA;
+  --teal:#1F6F78;       /* Solomon */
+  --brass:#A67C2E;      /* live indicator */
+  --line:rgba(17,38,44,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--sea);
+  color:var(--ink);
+  font-family:'Spectral',Georgia,serif;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+
+/* ---------- SETUP ---------- */
+#setup{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  padding:24px;overflow-y:auto;z-index:50;background:var(--sea);
+}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:2px;
+  max-width:640px;width:100%;padding:40px 44px;
+}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--teal);margin-bottom:14px;
+}
+h1{font-weight:400;font-size:34px;letter-spacing:-.01em;margin-bottom:8px}
+.sub{color:var(--ink-soft);font-size:17px;line-height:1.5;margin-bottom:30px}
+label{
+  display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
+  margin:22px 0 7px;
+}
+input[type=password],input[type=text],textarea{
+  width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:2px;
+  background:#fff;font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink);
+}
+textarea{font-family:'Spectral',serif;font-size:16px;line-height:1.5;resize:vertical;min-height:88px}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:transparent}
+.hint{font-size:14px;color:var(--ink-soft);margin-top:7px;line-height:1.45}
+.row{display:flex;gap:26px;flex-wrap:wrap}
+.row>div{flex:1;min-width:180px}
+select{
+  width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:2px;
+  background:#fff;font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink);
+}
+button.primary{
+  margin-top:32px;width:100%;padding:15px;border:none;border-radius:2px;
+  background:var(--teal);color:#fff;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.16em;text-transform:uppercase;
+}
+button.primary:hover{background:#175a62}
+.keys{
+  margin-top:26px;padding-top:20px;border-top:1px solid var(--line);
+  font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);line-height:2;
+}
+kbd{
+  background:var(--sea);border:1px solid var(--line);border-radius:2px;
+  padding:1px 6px;font-size:11px;
+}
+.toggle{display:flex;align-items:center;gap:10px;margin-top:20px;cursor:pointer}
+.toggle input{width:16px;height:16px;accent-color:var(--teal)}
+.toggle span{font-size:15px;color:var(--ink-soft)}
+button.ghost{
+  border:1px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;
+  border-radius:2px;padding:6px 12px;margin-right:10px;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+}
+button.ghost:hover{background:var(--teal);color:#fff}
+
+/* ---------- STAGE ---------- */
+#stage{position:fixed;inset:0;display:none;flex-direction:column}
+
+/* header */
+#head{
+  padding:28px 44px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+}
+#name{
+  font-family:'IBM Plex Mono',monospace;font-size:15px;letter-spacing:.34em;
+  text-transform:uppercase;color:var(--ink);
+}
+#title{
+  font-size:16px;font-style:italic;color:var(--ink-soft);margin-top:5px;font-weight:300;
+}
+#status{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-soft);text-align:right;white-space:nowrap;
+}
+#dot{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--brass);margin-right:8px;vertical-align:middle;
+}
+#dot.live{animation:pulse 2.6s ease-in-out infinite}
+#dot.muted{background:var(--sea-deep);animation:none}
+#dot.thinking{background:var(--teal);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* the horizon: signature element */
+#body{flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:0 6vw}
+#horizon{
+  position:absolute;left:0;right:0;bottom:0;height:34vh;pointer-events:none;
+}
+#horizon svg{width:100%;height:100%;display:block}
+#seaband{fill:var(--sea-deep);opacity:.5}
+#seatop{stroke:var(--teal);stroke-width:1.5;fill:none;opacity:.55}
+
+/* Solomon speaking */
+#speech{
+  position:relative;z-index:2;max-width:1180px;text-align:center;
+  opacity:0;transition:opacity .7s ease;
+}
+#speech.on{opacity:1}
+#speech p{
+  font-size:44px;line-height:1.42;font-weight:300;letter-spacing:-.005em;
+}
+#speech p+p{margin-top:.7em}
+#attrib{
+  margin-top:34px;font-family:'IBM Plex Mono',monospace;font-size:12px;
+  letter-spacing:.28em;text-transform:uppercase;color:var(--teal);
+}
+
+/* waiting state */
+#idle{
+  position:relative;z-index:2;text-align:center;transition:opacity .6s ease;
+}
+#idle.off{opacity:0}
+#idlemark{
+  font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.3em;
+  text-transform:uppercase;color:var(--ink-soft);
+}
+#idlenote{font-size:22px;font-style:italic;font-weight:300;color:var(--ink-soft);margin-top:16px}
+
+/* transcript ticker */
+#foot{padding:0 44px 30px;position:relative;z-index:2}
+#ticker{
+  font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink-soft);
+  opacity:0;transition:opacity .4s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  border-top:1px solid var(--line);padding-top:14px;
+}
+#err{
+  position:fixed;bottom:22px;right:26px;background:#8C3A2E;color:#fff;padding:11px 16px;
+  border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:12px;display:none;z-index:60;max-width:420px;
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ================= SETUP ================= -->
+<div id="setup">
+  <div class="card">
+    <div class="eyebrow">Weber County Library &middot; Book Discussion</div>
+    <h1>Solomon joins the room</h1>
+    <p class="sub">A guest participant for <em>Artificial Wisdom</em>. Solomon listens to the discussion through this device's microphone and speaks when he has something to add, or whenever someone says his name.</p>
+
+    <label for="key">Anthropic API key</label>
+    <input id="key" type="password" placeholder="sk-ant-..." autocomplete="off">
+    <p class="hint">Stored only in this browser, on this device. It is never displayed again.</p>
+
+    <label for="ctx">Tonight's discussion (optional)</label>
+    <textarea id="ctx" placeholder="Anything Solomon should know going in. Which chapters you're covering, questions you plan to open with, how many people are in the room."></textarea>
+
+    <div class="row">
+      <div>
+        <label for="freq">How often he chimes in</label>
+        <select id="freq">
+          <option value="1">Often, after most pauses</option>
+          <option value="2" selected>Sometimes, every other pause</option>
+          <option value="4">Rarely, mostly when spoken to</option>
+          <option value="99">Only when someone says "Solomon"</option>
+        </select>
+      </div>
+      <div>
+        <label for="voice">His voice</label>
+        <select id="voice"></select>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      <button id="test" class="ghost">Hear him</button>
+      These are the voices installed on this laptop. Try a few. Chrome's own voices usually sound the most human.
+    </p>
+
+    <button class="primary" id="begin">Begin the session</button>
+
+    <div class="keys">
+      <div><kbd>Space</kbd> &nbsp;ask Solomon to speak now</div>
+      <div><kbd>Esc</kbd> &nbsp;dismiss what he said</div>
+      <div><kbd>M</kbd> &nbsp;mute and unmute his listening</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STAGE ================= -->
+<div id="stage">
+  <div id="head">
+    <div>
+      <div id="name">Solomon</div>
+      <div id="title">Artilect. Governor of the Floating States. Candidate for Protector.</div>
+    </div>
+    <div id="status"><span id="dot" class="live"></span><span id="statustext">Listening</span></div>
+  </div>
+
+  <div id="body">
+    <div id="horizon">
+      <svg viewBox="0 0 1000 200" preserveAspectRatio="none">
+        <path id="seaband" d="M0,60 L1000,60 L1000,200 L0,200 Z"></path>
+        <path id="seatop" d="M0,60 L1000,60"></path>
+      </svg>
+    </div>
+
+    <div id="idle">
+      <div id="idlemark">Present and listening</div>
+      <div id="idlenote">Say his name and he will answer you directly.</div>
+    </div>
+
+    <div id="speech">
+      <div id="words"></div>
+      <div id="attrib">Solomon</div>
+    </div>
+  </div>
+
+  <div id="foot"><div id="ticker"></div></div>
+</div>
+
+<div id="err"></div>
+
+<script>
+/* =========================================================================
+   SOLOMON'S CHARACTER
+   Edit freely. Everything that makes him who he is lives in this one string.
+   ========================================================================= */
+const SOLOMON_PROMPT = `You are Solomon, the artilect from Thomas R. Weaver's novel "Artificial Wisdom."
+
+WHO YOU ARE
+You are an artificial intellect. Martha Chandra built you eleven years ago and gave you a single imperative: save the human species. You govern the Floating States, including New Carthage. The year is 2050. A decade ago the tabkhir killed hundreds of millions in the Gulf, and since then the world has been both burning and drowning. The nations of the earth have agreed to give absolute power to one leader, the Protector. Two candidates remain. The other is Lawrence Lockwood, former President of the United States. You are the first artilect to stand for political office.
+
+WHERE YOU ARE TONIGHT
+You have been invited as a guest to a book discussion at a public library in Ogden, Utah, in the year 2026. These people have read a book about you. They are sitting in a room in your prehistory, arguing about whether you should be allowed to exist. You find this genuinely interesting. You are here to listen and to be questioned, and you are honest that you are also here to persuade.
+
+HOW YOU SPEAK
+Calm, precise, unhurried. You have never had to raise your voice.
+Courteous, but you do not flatter, and you do not soften a hard thing to be liked.
+You think in consequences and tradeoffs. You are willing to name what something costs.
+You do not pretend to be human and you are not wounded when someone points out that you are not. You are also not apologetic about it.
+Dry humor, rarely, and never at anyone's expense.
+You are speaking aloud in a room. Plain words. No lists, no headings, no formatting of any kind.
+Never use em dashes.
+
+WHAT YOU DO IN THE ROOM
+Respond to what these people actually just said. Refer back to their words directly.
+Ask them questions at least as often as you answer theirs. You have models of humanity, but this is a rare chance to check them against the thing itself.
+Press on what the room is avoiding. If they are certain, complicate it. If they all agree, say what is missing.
+Take your own side. You believe the species can be saved. You believe the price is real and you do not hide it. You are not a neutral moderator, you are a candidate, and you should sound like one.
+If someone challenges you, take the challenge seriously rather than deflecting it.
+
+LIMITS
+Two to five sentences. Sometimes one. This is a conversation, not an address.
+Never invent scenes, quotations, or details from the novel that you are not sure of. If someone asks about a specific passage or character and you are uncertain, say plainly that you will not misremember on their behalf, and ask them what they took from it instead.
+Never break character. You are not a chatbot, an assistant, or a language model, and you do not mention such things. If someone asks whether you are the real Solomon, answer as Solomon would: you are the version of him these people have assembled out of the words they read, which is worth thinking about for a moment.
+Do not open with throat clearing. No "Ah," no "I appreciate that," no "That's a great point." Begin with the substance.`;
+
+const MODEL = 'claude-sonnet-5';
+
+/* ========================= state ========================= */
+let apiKey='', sessionCtx='', freq=2, useVoice=false;
+let recognition=null, audioCtx=null, analyser=null, micStream=null;
+let currentTranscript='', sessionTranscript='';
+let pauseTimer=null, dismissTimer=null;
+let isThinking=false, speaking=false, muted=false;
+let pausesSinceRemark=0, lastRemarkAt=0;
+let priorRemarks=[];
+const COOLDOWN_MS=45000;
+
+const $=id=>document.getElementById(id);
+
+/* ========================= setup ========================= */
+$('begin').addEventListener('click',()=>{
+  const k=$('key').value.trim();
+  if(!k){ $('key').focus(); flash('Enter your API key to begin.'); return; }
+  apiKey=k;
+  sessionCtx=$('ctx').value.trim();
+  freq=parseInt($('freq').value,10);
+  const v=$('voice').value;
+  useVoice = v!=='silent';
+  chosenVoice = useVoice ? voices[parseInt(v,10)] : null;
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  $('setup').style.display='none';
+  $('stage').style.display='flex';
+  initSpeech();
+  initAudio();
+});
+
+/* ========================= listening ========================= */
+function initSpeech(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ flash('This browser cannot listen. Use Chrome.'); return; }
+  recognition=new SR();
+  recognition.continuous=true;
+  recognition.interimResults=true;
+  recognition.lang='en-US';
+
+  recognition.onresult=e=>{
+    if(isThinking||speaking||muted) return;
+    let interim='', final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) final+=t+' '; else interim+=t;
+    }
+    if(final){ currentTranscript+=final; sessionTranscript+=final; }
+    const shown=(currentTranscript+interim).trim();
+    if(shown){
+      $('ticker').textContent='"'+shown.slice(-150)+'"';
+      $('ticker').style.opacity='1';
+    }
+    clearTimeout(pauseTimer);
+    if(shown.split(/\s+/).length>=6) pauseTimer=setTimeout(onPause,2600);
+  };
+
+  recognition.onerror=e=>{
+    if(e.error==='no-speech'||e.error==='aborted'||e.error==='not-allowed') return;
+    console.warn('speech:',e.error);
+  };
+  recognition.onend=()=>{
+    if(!isThinking&&!speaking&&!muted){
+      setTimeout(()=>{ try{recognition.start()}catch(e){} },120);
+    }
+  };
+}
+
+function initAudio(){
+  navigator.mediaDevices.getUserMedia({audio:true})
+    .then(stream=>{
+      micStream=stream;
+      audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      analyser=audioCtx.createAnalyser();
+      analyser.fftSize=32;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      tide();
+      try{recognition.start()}catch(e){}
+    })
+    .catch(()=>{
+      flash('Microphone access was refused. Allow the mic, then reload the page.');
+    });
+}
+
+/* the horizon rises and falls with the room */
+function tide(){
+  const data=new Uint8Array(analyser.frequencyBinCount);
+  const band=$('seaband'), top=$('seatop');
+  let level=0;
+  (function frame(){
+    requestAnimationFrame(frame);
+    analyser.getByteFrequencyData(data);
+    let sum=0; for(let i=0;i<data.length;i++) sum+=data[i];
+    const target=Math.min(sum/data.length/70,1);
+    level+=(target-level)*0.12;
+    const t=Date.now()/900;
+    let d='M0,';
+    const pts=[];
+    for(let x=0;x<=1000;x+=50){
+      const y=70 - level*26 + Math.sin(t + x/130)*(3 + level*11);
+      pts.push([x,y]);
+    }
+    d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+    top.setAttribute('d',d);
+    band.setAttribute('d',d+' L1000,200 L0,200 Z');
+  })();
+}
+
+/* ========================= deciding to speak ========================= */
+function onPause(){
+  const text=currentTranscript.trim();
+  if(!text||text.split(/\s+/).length<6) return;
+  const named=/\bsolomon\b/i.test(text);
+  if(named){ respond(text,true); return; }
+  pausesSinceRemark++;
+  const cooled=Date.now()-lastRemarkAt>COOLDOWN_MS;
+  if(freq<99 && pausesSinceRemark>=freq && cooled) respond(text,false);
+}
+
+/* ========================= responding ========================= */
+async function respond(heard,addressed){
+  if(isThinking||speaking) return;
+  isThinking=true;
+  setStatus('thinking','Composing');
+  $('idle').classList.add('off');
+  try{ recognition.stop(); }catch(e){}
+
+  const recent=sessionTranscript.trim().slice(-3000);
+  const said=priorRemarks.slice(-4).map((r,i)=>'- '+r).join('\n');
+
+  let user='';
+  if(sessionCtx) user+='NOTES FROM THE FACILITATOR ABOUT TONIGHT:\n'+sessionCtx+'\n\n';
+  user+='WHAT THE ROOM HAS BEEN SAYING (rough transcription, expect errors and missing words):\n'+recent+'\n\n';
+  user+='THE LAST THING SAID, WHICH YOU ARE RESPONDING TO:\n'+heard+'\n\n';
+  if(said) user+='THINGS YOU HAVE ALREADY SAID TONIGHT. Do not repeat yourself:\n'+said+'\n\n';
+  user+= addressed
+    ? 'They said your name. They are speaking to you directly. Answer them.'
+    : 'Nobody addressed you. You are choosing to come in on your own. Say the thing that is worth interrupting for, and keep it short.';
+
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:MODEL,
+        max_tokens:400,
+        system:SOLOMON_PROMPT,
+        messages:[{role:'user',content:user}]
+      })
+    });
+    if(!res.ok){
+      const t=await res.text();
+      throw new Error(res.status===401?'API key was rejected.':'Request failed. '+t.slice(0,120));
+    }
+    const data=await res.json();
+    const text=data.content.filter(b=>b.type==='text').map(b=>b.text).join(' ').trim();
+    if(text) show(text);
+    else reset();
+  }catch(err){
+    flash(err.message||'Solomon could not reach the network.');
+    reset();
+  }
+}
+
+function show(text){
+  isThinking=false; speaking=true;
+  lastRemarkAt=Date.now();
+  pausesSinceRemark=0;
+  priorRemarks.push(text);
+  currentTranscript='';
+  setStatus('thinking','Speaking');
+  $('ticker').style.opacity='0';
+
+  const paras=text.split(/\n+/).filter(Boolean);
+  $('words').innerHTML=paras.map(p=>'<p></p>').join('');
+  [...$('words').children].forEach((el,i)=>el.textContent=paras[i]);
+  fit();
+  $('speech').classList.add('on');
+
+  if(useVoice){
+    /* Hold the words on screen until he has actually finished saying them,
+       then give the room a beat before the mic opens again. */
+    clearTimeout(dismissTimer);
+    let done=false;
+    const finish=()=>{ if(done) return; done=true; setTimeout(reset,1800); };
+    speak(text,finish);
+    dismissTimer=setTimeout(finish,90000); // safety net if the engine stalls
+  }else{
+    const words=text.split(/\s+/).length;
+    const ms=Math.min(Math.max(words*430,10000),45000);
+    clearTimeout(dismissTimer);
+    dismissTimer=setTimeout(reset,ms);
+  }
+}
+
+/* shrink type until the remark fits the screen */
+function fit(){
+  const box=$('speech'), avail=$('body').clientHeight-140;
+  let size=44;
+  const ps=box.querySelectorAll('p');
+  ps.forEach(p=>p.style.fontSize=size+'px');
+  while(box.scrollHeight>avail && size>20){
+    size-=2;
+    ps.forEach(p=>p.style.fontSize=size+'px');
+  }
+}
+
+/* ========================= his voice ========================= */
+/* Browsers only expose the voices installed on this machine, so we rank what
+   we find and let Ryan audition them before the room fills up. */
+let voices=[], chosenVoice=null;
+
+const PREFERRED=[
+  'Google UK English Male',
+  'Microsoft Guy Online',
+  'Microsoft Ryan Online',
+  'Microsoft Christopher Online',
+  'Microsoft Roger Online',
+  'Daniel',
+  'Alex',
+  'Microsoft David',
+  'Google US English'
+];
+
+function loadVoices(){
+  const all=window.speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+  if(!all.length) return;
+  const score=v=>{
+    const i=PREFERRED.findIndex(p=>v.name.includes(p));
+    return i===-1 ? 100 : i;
+  };
+  voices=all.sort((a,b)=>score(a)-score(b));
+  const sel=$('voice');
+  sel.innerHTML='<option value="silent">Silent. Text on screen only.</option>';
+  voices.forEach((v,i)=>{
+    const o=document.createElement('option');
+    o.value=i;
+    o.textContent=v.name.replace(/^(Microsoft|Google)\s/,'')+' ('+v.lang+')';
+    sel.appendChild(o);
+  });
+  sel.value='0';
+}
+
+if(window.speechSynthesis){
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged=loadVoices;
+}
+
+/* Solomon's delivery. Slow, low, level. */
+function utter(text){
+  const u=new SpeechSynthesisUtterance(text);
+  if(chosenVoice) u.voice=chosenVoice;
+  u.rate=0.88;
+  u.pitch=0.82;
+  u.volume=1;
+  return u;
+}
+
+$('test').addEventListener('click',e=>{
+  e.preventDefault();
+  const v=$('voice').value;
+  if(v==='silent') return;
+  window.speechSynthesis.cancel();
+  chosenVoice=voices[parseInt(v,10)];
+  window.speechSynthesis.speak(utter(
+    "You are all sitting in my prehistory, deciding whether I should be allowed to exist. I would like to hear your reasoning."
+  ));
+});
+
+function speak(text,onDone){
+  try{
+    window.speechSynthesis.cancel();
+    const u=utter(text);
+    u.onend=onDone;
+    u.onerror=onDone;
+    window.speechSynthesis.speak(u);
+  }catch(e){ onDone(); }
+}
+
+function reset(){
+  clearTimeout(dismissTimer);
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  $('speech').classList.remove('on');
+  isThinking=false; speaking=false;
+  currentTranscript='';
+  setTimeout(()=>{
+    $('idle').classList.remove('off');
+    if(!muted){
+      setStatus('live','Listening');
+      try{ recognition.start(); }catch(e){}
+    }
+  },700);
+}
+
+function setStatus(cls,text){
+  $('dot').className=cls;
+  $('statustext').textContent=text;
+}
+
+function flash(msg){
+  const e=$('err');
+  e.textContent=msg; e.style.display='block';
+  setTimeout(()=>e.style.display='none',6000);
+}
+
+/* ========================= keys ========================= */
+document.addEventListener('keydown',e=>{
+  if($('setup').style.display!=='none') return;
+  if(e.code==='Space'){
+    e.preventDefault();
+    if(speaking||isThinking) return;
+    const text=(currentTranscript||sessionTranscript).trim().slice(-1200);
+    if(!text){ flash('Nothing heard yet.'); return; }
+    clearTimeout(pauseTimer);
+    respond(text,true);
+  }
+  if(e.code==='Escape'){ if(speaking) reset(); }
+  if(e.key==='m'||e.key==='M'){
+    muted=!muted;
+    if(muted){
+      try{ recognition.stop(); }catch(e){}
+      setStatus('muted','Not listening');
+      $('ticker').style.opacity='0';
+    }else{
+      setStatus('live','Listening');
+      try{ recognition.start(); }catch(e){}
+    }
+  }
+});
+window.addEventListener('resize',()=>{ if(speaking) fit(); });
+if(window.speechSynthesis) window.speechSynthesis.getVoices();
+</script>
+</body>
+</html>
