@@ -159,6 +159,32 @@ button.ghost:hover{background:var(--teal);color:#fff}
   position:fixed;bottom:22px;right:26px;background:#8C3A2E;color:#fff;padding:11px 16px;
   border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:12px;display:none;z-index:60;max-width:420px;
 }
+/* live noise tuner */
+#tuner{
+  position:fixed;left:26px;bottom:24px;z-index:70;width:210px;
+  background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:13px 14px;
+  font-family:'IBM Plex Mono',monospace;
+}
+#tuner.hidden{display:none}
+#tunerhead{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:9px}
+#meter{position:relative;height:12px;background:var(--sea);border-radius:2px;overflow:hidden;margin-bottom:11px}
+#meterfill{position:absolute;left:0;top:0;bottom:0;width:0%;background:var(--sea-deep);transition:width .08s linear}
+#meterline{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--teal);left:20%}
+#tunerrow{display:flex;align-items:center;gap:8px}
+#tunerval{font-size:14px;color:var(--ink);min-width:22px;text-align:center}
+.tbtn{
+  border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;border-radius:2px;
+  width:30px;height:30px;font-size:16px;line-height:1;font-family:inherit;
+}
+.tbtn.wide{width:auto;padding:0 12px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-left:auto}
+.tbtn:hover{background:var(--teal);color:#fff;border-color:transparent}
+#tunernote{font-size:11px;line-height:1.4;color:var(--ink-soft);margin-top:10px}
+#showtuner{
+  position:fixed;left:26px;bottom:24px;z-index:70;display:none;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);cursor:pointer;border-radius:2px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:8px 12px;
+}
+#showtuner:hover{background:var(--teal);color:#fff;border-color:transparent}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -204,7 +230,7 @@ button.ghost:hover{background:var(--teal);color:#fff}
       <div><kbd>Space</kbd> &nbsp;ask Solomon to speak now</div>
       <div><kbd>Esc</kbd> &nbsp;dismiss what he said</div>
       <div><kbd>M</kbd> &nbsp;mute and unmute his listening</div>
-      <div><kbd>&uarr;</kbd> <kbd>&darr;</kbd> &nbsp;noise filter, if the room is loud or quiet</div>
+      <div><kbd>&uarr;</kbd> <kbd>&darr;</kbd> &nbsp;how quickly he replies</div>
     </div>
   </div>
 </div>
@@ -239,6 +265,20 @@ button.ghost:hover{background:var(--teal);color:#fff}
   </div>
 
   <div id="foot"><div id="ticker"></div></div>
+
+  <!-- live noise tuner: always visible, click or arrow-key -->
+  <div id="tuner">
+    <div id="tunerhead">Response delay</div>
+    <div id="meter"><div id="meterfill"></div><div id="meterline"></div></div>
+    <div id="tunerrow">
+      <button id="lessn" class="tbtn">&minus;</button>
+      <span id="tunerval">0.9s</span>
+      <button id="moren" class="tbtn">+</button>
+      <button id="hidetuner" class="tbtn wide">Hide</button>
+    </div>
+    <div id="tunernote">Lower and he replies sooner. Raise it if he interrupts people.</div>
+  </div>
+  <button id="showtuner">Response delay</button>
 </div>
 
 <div id="err"></div>
@@ -299,12 +339,13 @@ let pausesSinceRemark=0, lastRemarkAt=0;
 let priorRemarks=[];
 const COOLDOWN_MS=45000;
 
-/* --- turn-taking tuning. Adjustable live with the up and down arrows. --- */
-let speakFloor=12;             /* volume below this counts as "the room is quiet" */
-let roomLevel=0, lastLoudAt=0; /* live readings from the microphone */
-const PAUSE_MS=1200;           /* how long the room stays quiet before he speaks */
-const MIN_WORDS=6;             /* ignore stray coughs and one-word noise */
-const CONFIDENCE_FLOOR=0.5;    /* drop transcription the engine is unsure about */
+/* --- turn-taking. PAUSE_MS is how long a gap he waits before speaking. --- */
+let speakFloor=12;                  /* kept only for the horizon animation */
+let roomLevel=0, lastLoudAt=0;
+let PAUSE_MS=900;                   /* adjustable live. lower = he replies sooner */
+let lastSpeechAt=0, firedThisPause=false;
+const MIN_WORDS=4;                  /* ignore stray coughs and one-word noise */
+const CONFIDENCE_FLOOR=0.5;         /* drop transcription the engine is unsure about */
 
 const $=id=>document.getElementById(id);
 
@@ -321,6 +362,7 @@ $('begin').addEventListener('click',()=>{
   try{ window.speechSynthesis.cancel(); }catch(e){}
   $('setup').style.display='none';
   $('stage').style.display='flex';
+  bindTuner();
   initSpeech();
   initAudio();
 });
@@ -352,9 +394,10 @@ function initSpeech(){
     if(shown){
       $('ticker').textContent='"'+shown.slice(-150)+'"';
       $('ticker').style.opacity='1';
+      /* Someone is speaking right now. Reset the quiet clock. */
+      lastSpeechAt=Date.now();
+      firedThisPause=false;
     }
-    /* Turn-taking is now decided by room volume, not by these events,
-       so a noisy room can no longer mask the pause. See watchRoom(). */
   };
 
   recognition.onerror=e=>{
@@ -412,16 +455,16 @@ function tide(){
   })();
 }
 
-/* ========================= turn-taking by ear ========================= */
-/* Fire when the room has actually fallen quiet, judged by microphone volume,
-   not by the speech engine. This is what makes a noisy room stop mattering. */
+/* ========================= turn-taking ========================= */
+/* Speak once the room has gone quiet for PAUSE_MS, measured from the last
+   words actually heard. One response per pause. */
 function watchRoom(){
   setInterval(()=>{
-    if(isThinking||speaking||muted) return;
-    const quietFor=Date.now()-lastLoudAt;
+    if(isThinking||speaking||muted||firedThisPause) return;
+    const quietFor=Date.now()-lastSpeechAt;
     const words=currentTranscript.trim().split(/\s+/).filter(Boolean).length;
-    if(quietFor>=PAUSE_MS && words>=MIN_WORDS) onPause();
-  },200);
+    if(quietFor>=PAUSE_MS && words>=MIN_WORDS){ firedThisPause=true; onPause(); }
+  },120);
 }
 
 /* ========================= deciding to speak ========================= */
@@ -732,29 +775,30 @@ document.addEventListener('keydown',e=>{
       try{ recognition.start(); }catch(e){}
     }
   }
-  /* Tune how sensitive his ear is, live, in the actual room.
-     Up = he waits for more quiet (good for a noisy room).
-     Down = he jumps in on smaller gaps (good for a hushed room). */
-  if(e.code==='ArrowUp'){   e.preventDefault(); speakFloor=Math.min(speakFloor+2,60); showDial(); }
-  if(e.code==='ArrowDown'){ e.preventDefault(); speakFloor=Math.max(speakFloor-2,2);  showDial(); }
+  /* Adjust how long a gap he waits before speaking. Arrows or the buttons. */
+  if(e.code==='ArrowUp'){   e.preventDefault(); nudgeDelay(200); }
+  if(e.code==='ArrowDown'){ e.preventDefault(); nudgeDelay(-200); }
 });
 
-let dialTimer=null;
-function showDial(){
-  let d=$('dial');
-  if(!d){
-    d=document.createElement('div');
-    d.id='dial';
-    d.style.cssText='position:fixed;bottom:26px;left:50%;transform:translateX(-50%);'+
-      'font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;'+
-      'color:#4A6068;background:#FAFBFA;border:1px solid rgba(17,38,44,.14);border-radius:2px;padding:9px 16px;z-index:70;';
-    document.body.appendChild(d);
-  }
-  const bars='|'.repeat(Math.round(speakFloor/2));
-  d.textContent='Noise filter  '+bars+'  ('+speakFloor+')';
-  d.style.opacity='1';
-  clearTimeout(dialTimer);
-  dialTimer=setTimeout(()=>{ d.style.opacity='0'; d.style.transition='opacity .5s'; },2200);
+/* ---- response-delay tuner ---- */
+function nudgeDelay(d){
+  PAUSE_MS=Math.max(400,Math.min(2600,PAUSE_MS+d));
+  $('tunerval').textContent=(PAUSE_MS/1000).toFixed(1)+'s';
+}
+function bindTuner(){
+  $('moren').onclick=()=>nudgeDelay(200);
+  $('lessn').onclick=()=>nudgeDelay(-200);
+  $('hidetuner').onclick=()=>{ $('tuner').classList.add('hidden'); $('showtuner').style.display='block'; };
+  $('showtuner').onclick=()=>{ $('tuner').classList.remove('hidden'); $('showtuner').style.display='none'; };
+  $('tunerval').textContent=(PAUSE_MS/1000).toFixed(1)+'s';
+  $('meterline').style.display='none';
+  /* The bar fills as the silence lengthens. When it is full, he speaks. */
+  setInterval(()=>{
+    if(isThinking||speaking){ $('meterfill').style.width='0%'; return; }
+    const pct=Math.min((Date.now()-lastSpeechAt)/PAUSE_MS*100,100);
+    $('meterfill').style.width=pct+'%';
+    $('meterfill').style.background = pct>=100 ? 'var(--teal)' : 'var(--sea-deep)';
+  },80);
 }
 window.addEventListener('resize',()=>{ if(speaking) fit(); });
 if(window.speechSynthesis) window.speechSynthesis.getVoices();
